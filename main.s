@@ -7,6 +7,31 @@
 section .text
 
 ;:================================================
+;:                  c_strlen
+;:================================================
+;: compute length of c_string (terminated by a 0x00 character)
+;: ENTRY:
+;:      rsi - string addr
+;: DESTROY:
+;:      rsi
+;: RETURN:
+;:      rdx - string len (not counting 0x00 character)
+;:
+;:================================================
+c_strlen:
+            xor rdx, rdx
+            dec rsi
+c_strlen_while:
+            inc rsi
+            inc rdx
+
+            cmp byte [rsi], 0x00
+            jne c_strlen_while
+
+            dec rdx
+            ret
+
+;:================================================
 ;:              nasm_printf
 ;:================================================
 ;: cdecl
@@ -47,6 +72,9 @@ process_specifier:
             cmp byte [rbx], 'c'     ; if cur_char == 'c'
             je print_char
 
+            cmp byte [rbx], 's'
+            je print_c_string
+
 process_specifier_end:
 
             inc rbx                 ; next fmt_char
@@ -62,6 +90,19 @@ print_char:
             add rbp, 8              ; next arg
             jmp process_specifier_end
 
+print_c_string:
+
+            mov rax, 0x01           ; write
+            mov rdi, 1              ; stdout
+            mov rsi, qword [rbp]    ; |
+            call c_strlen           ; | rdx = strlen
+            mov rsi, qword [rbp]    ; string_addr = cur_arg
+            syscall
+
+            add rbp, 8              ; next arg
+            jmp process_specifier_end
+
+
 fmt_loop_end:
 
             ret
@@ -71,14 +112,16 @@ global _start                  ; predefined entry point name for ld
 
 _start:
 
-
             push rbp
             mov rbp, rsp
 
-            push '@'
-            push '^'
-            push '*'
+
+            push Msg
+            push '!'
+            push '&'
+
             push fmt_string
+
             call nasm_printf
 
             mov rsp, rbp       ; remove all stack arguments
@@ -90,7 +133,8 @@ _start:
 
 section     .data
 
-Msg:        db "__Hllwrld", 0x0a, 0x0
+Msg:        db "Subtree", 0x00
+
 MsgLen      equ $ - Msg
 
-fmt_string db "'%c' '%c' '%c'", 0x0a, 0x00
+fmt_string db "%c %c %s", 0x0a 0x00
