@@ -14,40 +14,35 @@ section .text
 ;:
 ;:================================================
 nasm_printf:
-            mov rax, 0x01      ; write64 (rdi, rsi, rdx) ... r10, r8, r9
-            mov rdi, 1         ; stdout
-            mov rsi, Msg
-            mov rdx, MsgLen    ; strlen (Msg)
-            syscall
-
-            mov rax, 0x01
-            mov rdi, 1
-            mov rsi, [rbp + 8]
-            mov rdx, MsgLen
+            mov rax, 0x01           ; write
+            mov rdi, 1              ; stdout
+            mov rsi, [rsp + 8]      ; msg offset
+            mov rdx, [rsp + 16]     ; msg len
             syscall
             ret
 
 global _start                  ; predefined entry point name for ld
 
 
-
 _start:
+
 
             push rbp
             mov rbp, rsp
 
-            push Msg
-            push 1
+            push 10
+            push Msg1
             call nasm_printf
 
-            mov rsp, rbp
-            pop rbp
+            mov rsp, rbp       ; remove all stack arguments
+            pop rbp            ; restore old stack frame
 
             mov rax, 0x3C      ; exit64 (rdi)
-            xor rdi, rdi
+            xor rdi, rdi       ; exit_code = 0
             syscall
 
 section     .data
 
 Msg:        db "__Hllwrld", 0x0a
+Msg1:        db "I love asm!!!!:((", 0x0a
 MsgLen      equ $ - Msg
