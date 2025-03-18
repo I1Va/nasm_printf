@@ -395,10 +395,102 @@ nasm_printf:
 
 
 
+;================================================================================================
+;              nasm_atexit
+;================================================================================================
+; DESCR:
+;       Registers the function pointed to by rdi  to be called on normal program termination (via exit())
+;       The functions will be called in reverse order they were registered, i.e. the function registered last will be executed first.
+;       The same function may be registered more than once.
+;       The implementation is guaranteed to support the registration of <atexit_list_sz> functions
+;       Transmitted funtions should not take arguments and return values
+; ENTRY:
+;       rdi - function pointer
+; DESTROY:
+;       rax, rdi
+; GLOBAL:
+;       atexit_list_sz
+;       atexit_list
+;       atexit_list_idx
+; RETURN:
+;       ​0​ if the registration succeeds, 1 otherwise.
+;       rax - return value
+;================================================================================================
+nasm_atexit:
+            mov     rsi, qword [atexit_list_idx]        ; if atexit_list will be overflowed -> return 1
+            cmp     rsi, atexit_list_sz                 ; else -> add function pointer
+            jge     .exit_failure
+            jmp     .exit_succes
+
+.exit_failure:
+            mov     rax, 1
+            ret
+
+.exit_succes:
+            mov     qword [atexit_list + rsi], rdi      ;|
+            inc     rsi                                 ;| atexit_list_idx[atexit_list_idx++] = function_ptr
+            mov     qword [atexit_list_idx], rsi        ;|
+
+            xor     rax, rax
+            ret
+
+;================================================================================================
+
+
+
+;================================================================================================
+;              nasm_exit
+;================================================================================================
+; DESCR:
+;       calls functions from atexit_list in reversed order
+;       exits program with code in rdi
+; ENTRY:
+;       rdi - exit code
+; DESTROY:
+;       rdi, rsi, rdx
+; GLOBAL:
+;       atexit_list_sz
+;       atexit_list
+;       atexit_list_idx
+; RETURN:
+;       None
+;================================================================================================
+nasm_exit:
+            push    rbx                                 ;| save nonvolatile regs
+            push    rbp                                 ;|
+
+            mov     rbx, rdi                            ; save rdi into rbx
+            mov     rbp, qword [atexit_list_idx]        ; rbp = atexit_list_idx
+.while:
+
+            cmp     rbp, 0
+            je      .while_end
+
+            dec     rbp                                 ;
+            call    qword[atexit_list + rbp]            ; call atexit_list[rbp--]
+.while_end:
+
+            mov rdi, rbx                                ; restore exit code
+
+            pop     rbp                                 ;| restore nonvolatile regs
+            pop     rbx                                 ;|
+
+            pop     rax                                 ; pop return adrr
+
+            mov rax, 0x3C                               ; exit64 (rdi)
+                                                        ; exit_code = rdi
+            syscall
+;================================================================================================
+
 global _start                                           ; predefined entry point name for ld
 
 
 _start:
+
+            mov     rdi, stdout_flush
+            call    nasm_atexit
+
+
             push -1341
             push -1341
             push -1341
@@ -411,11 +503,10 @@ _start:
 
             add rsp, 48                                 ; clear stack (args_number * 8)
 
-            call stdout_flush
 
-            mov rax, 0x3C                               ; exit64 (rdi)
-            xor rdi, rdi                                ; exit_code = 0
-            syscall
+            mov rdi, 0                                  ;|
+            call nasm_exit                              ;| exit(rdi)
+
 
 section     .data
 
@@ -423,7 +514,11 @@ Msg:        db "Hello", 0x00
 fmt_string_1  db "string '%s'", 0x0a, "char '%c'", 0x0a, "hex '%x'", 0x0a, "octal '%o'", 0x0a, "decimal '%d'", 0x0a, "binary '%b'", 0x0a, "radar is 100 %% 0_0", 0x0a, 0x0
 fmt_string_2  db "123", 0x00
 
-stdout_bufer_size equ 7
+stdout_bufer_size equ 1024
 stdout_bufer db stdout_bufer_size dup(0x0)
 stdout_bufer_idx dq 0
 
+
+atexit_list_sz equ 16
+atexit_list dq atexit_list_sz dup(-1)
+atexit_list_idx dq 0
