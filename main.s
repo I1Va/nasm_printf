@@ -292,9 +292,8 @@ nasm_printf:
             mov     rdi, rbx                            ; string addr = rbx
             mov     rsi, 1                              ; string len = 1
             call    nasm_puts                           ; DESTR(rdi, rsi, rdx, r8, r9)
-
-            inc     rbx                                 ; next fmt_char
-            jmp     .fmt_loop
+                                                        ; next fmt_char
+            jmp     .proc_specifier_end
 
 
 
@@ -406,7 +405,7 @@ _start:
             mov rcx, -1341                              ; 4'th arg
             mov rdx, '#'                                ; 3'rd arg
             mov rsi, Msg                                ; 2'nd arg
-            mov rdi, fmt_string                         ; 1'st arg
+            mov rdi, fmt_string_1                       ; 1'st arg
 
             call nasm_printf
 
@@ -421,10 +420,10 @@ _start:
 section     .data
 
 Msg:        db "Hello", 0x00
-MsgLen      equ $ - Msg
-fmt_string  db "string '%s'", 0x0a, "char '%c'", 0x0a, "hex '%x'", 0x0a, "octal '%o'", 0x0a, "decimal '%d'", 0x0a, "binary '%b'", 0x0a, "radar is 100 %% 0_0", 0x0a
+fmt_string_1  db "string '%s'", 0x0a, "char '%c'", 0x0a, "hex '%x'", 0x0a, "octal '%o'", 0x0a, "decimal '%d'", 0x0a, "binary '%b'", 0x0a, "radar is 100 %% 0_0", 0x0a, 0x0
+fmt_string_2  db "123", 0x00
 
-stdout_bufer_size equ 32
-stdout_bufer db stdout_bufer_size dup(0x00)
+stdout_bufer_size equ 7
+stdout_bufer db stdout_bufer_size dup(0x0)
 stdout_bufer_idx dq 0
 
