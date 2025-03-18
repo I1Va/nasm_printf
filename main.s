@@ -126,7 +126,81 @@ nasm_puts:
 
 
 
+;:================================================
+;:              nasm_ntoa
+;:================================================
+;: converts a number (rdi) to a radix(rsi) form
+;: ENTRY:
+;:      rdi - input number
+;:      rsi - radix
+;: DESTROY:
+;:      ?
+;: GLOBAL:
+;:      ?
+;: RETURN:
+;:
+;:
+;:================================================
+nasm_ntoa:
+            mov qword [rsp-80], 0
+            mov qword [rsp-72], 0
+            mov qword [rsp-64], 0
+            mov qword [rsp-56], 0
+            mov qword [rsp-48], 0
+            mov qword [rsp-40], 0
+            mov qword [rsp-32], 0
+            mov qword [rsp-24], 0
+            mov qword [rsp-16], 0
+            mov qword [rsp-8], 0
+            ; [rsp] - ret addr
 
+            mov ecx, 63         ; bufer_idx
+            jmp .do_while
+
+.letter:
+            add edx, 'a' - 10
+            jmp .write_bufer
+
+.write_bufer:
+            lea r8, [rcx - 1]               ; r8 = rcx + 1
+            mov byte [rsp - 80 + rcx], dl   ; bufer[rcx] = char
+
+            mov rax, rdi            ;|
+            mov edx, 0              ;| rdi /= rsi
+            div rsi                 ;|
+
+            mov rdi, rax
+            mov rcx, r8
+
+            cmp rdi, 0
+            je .end
+
+
+.do_while:
+            mov rax, rdi            ;|
+            mov edx, 0              ;| rdx = (rsi % rax)
+            div rsi                 ;|
+
+            cmp dl, 9               ;| if (rdx > 9) -> letter
+            jg .letter              ;|
+
+            add edx, '0'            ;| if (rdx <= 9) -> digit
+            jmp .write_bufer
+
+.end:
+            inc rcx
+
+
+
+            lea rdi, [rsp - 80 + rcx]
+            call c_strlen
+
+            lea rdi, [rsp - 80 + rcx]
+            mov rsi, rax
+            call nasm_puts
+
+            ret
+;:================================================
 
 
 
@@ -241,18 +315,23 @@ global _start                  ; predefined entry point name for ld
 
 _start:
 
-            push rbp
+            mov rdi, 123456789
+            mov rsi, 10
+            call nasm_ntoa
 
-            ;push '5'            ; 5'th arg
-            mov rcx, '4'        ; 4'th arg
-            mov rdx, '3'        ; 3'rd arg
-            mov rsi, Msg        ; 2'nd arg
-            mov rdi, fmt_string ; 1'st arg
+            mov rdi, 123456789
+            mov rsi, 10
+            call nasm_ntoa
 
-            call nasm_printf
+            ; ;push '5'            ; 5'th arg
+            ; mov rcx, '4'        ; 4'th arg
+            ; mov rdx, '3'        ; 3'rd arg
+            ; mov rsi, Msg        ; 2'nd arg
+            ; mov rdi, fmt_string ; 1'st arg
 
-            add rsp, 32         ; clear stack (args_number * 8)
-            pop rbp             ; restore old stack frame
+            ; call nasm_printf
+
+            ; add rsp, 32         ; clear stack (args_number * 8)
 
             call stdout_flush
 
