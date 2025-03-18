@@ -11,99 +11,203 @@ section .text
 ;:================================================
 ;: compute length of c_string (terminated by a 0x00 character)
 ;: ENTRY:
-;:      rsi - string addr
+;:      rdi - string addr
 ;: DESTROY:
-;:      rsi
+;:      rdi, rax
 ;: RETURN:
-;:      rdx - string len (not counting 0x00 character)
+;:      rax - string len (not counting 0x00 character)
 ;:
 ;:================================================
 c_strlen:
-            xor rdx, rdx
-            dec rsi
+            xor rax, rax
+            dec rdi
 c_strlen_while:
-            inc rsi
-            inc rdx
+            inc rax
+            inc rdi
 
-            cmp byte [rsi], 0x00
+            cmp byte [rdi], 0x00
             jne c_strlen_while
 
-            dec rdx
+            dec rax
             ret
+;:================================================
+
+
+
+;:================================================
+;:                  stdout_flush
+;:================================================
+;: flushes stdout bufer
+;:
+;: ENTRY:
+;:      NONE
+;: DESTROY:
+;:      rax, rdi, rsi, rdx
+;: GLOBAL:
+;:      stdout_bufer_size
+;:      stdout_bufer
+;:      stdout_bufer_idx
+;: RETURN:
+;:      NONE
+;:
+;:================================================
+stdout_flush:
+        mov rax, 0x01               ; write
+        mov rdi, 1                  ; stdout
+        mov rsi, stdout_bufer       ; string_addr
+        mov rdx, qword [stdout_bufer_idx]   ; len
+        syscall
+
+        mov qword [stdout_bufer_idx], 0x0000000000000000
+
+        ret
+;:================================================
+
+
+
+
+
+;:================================================
+;:                  nasm_puts
+;:================================================
+;: put string in stdin bufer
+;: ENTRY:
+;:      rdi - string addr
+;:      rsi - string len
+;: DESTROY:
+;:      rdi, rsi, rdx, r8, r9
+;: GLOBAL:
+;:      stdout_bufer_size
+;:      stdout_bufer
+;:      stdout_bufer_idx
+;: RETURN:
+;:
+;:
+;:================================================
+nasm_puts:
+            mov r8, rdi                                 ; save string addr
+            mov r9, rsi                                 ; save string len
+
+            cmp rsi, stdout_bufer_size                  ;| if string doesn't fit into stdout bufer
+            jg  .not_fit                                ;| -> flush + print string
+
+            mov rdx, qword [stdout_bufer_idx]           ;| if bufer + string overflows
+            add rdx, rsi                                ;| -> flush + write string to bufer
+            cmp rdx, stdout_bufer_size                  ;|
+            jge .stdout_overflow                        ;|
+
+            jmp .fit
+
+.not_fit:
+            call stdout_flush                           ; destr (rax, rdi, rsi, rdx)
+
+            mov rsi, r8                                 ; string_addr
+            mov rdx, r9                                 ; len
+            mov rax, 0x01                               ; write
+            mov rdi, 1                                  ; stdout
+            syscall
+
+            jmp .end
+
+.stdout_overflow:
+            call stdout_flush                           ; destr (rax, rdi, rsi, rdx)
+
+            jmp .fit
+
+.fit:
+            mov rcx, r9                                 ; len
+            mov rdi, stdout_bufer                       ;|dst
+            add rdi, qword [stdout_bufer_idx]           ;|
+            mov rsi, r8                                 ; src
+            rep movsb                                   ; copy string to bufer
+
+            mov rcx, qword[stdout_bufer_idx]            ;|
+            add rcx, r9                                 ;| move bufer idx
+            mov qword[stdout_bufer_idx], rcx            ;|
+
+            jmp .end
+
+.end:
+            ret
+
+;:================================================
+
 
 ;:================================================
 ;:              nasm_printf
 ;:================================================
-;: cdecl
+;: fastcall_4
 ;: prints args according to format
 ;:
 ;:================================================
 nasm_printf:
-            ; [rsp + 0] - ret addr
-            ; [rsp + 8] - fmt string
-            ; [rsp + 16] - arg1
-            ; [rsp + 24] - arg2
-            ; ...
+            pop r10                 ; r10 = ret addr
+
+            push rcx                ; 4'th arg
+            push rdx                ; 3'rd arg
+            push rsi                ; 2'nd arg
+            push rdi                ; 1'st arg
+
+            push r10
 
             mov rbp, rsp
             add rbp, 16
             mov rbx, [rsp + 8]      ; fmt offset
 
-fmt_loop:
+.fmt_loop:
             cmp byte [rbx], 0x00    ; if fmt[rbx] == 0 -> fmt_loop_end
-            je fmt_loop_end
+            je .fmt_loop_end
 
             cmp byte [rbx], '%'
-            je process_specifier
-
-            mov rax, 0x01           ; write
-            mov rdi, 1              ; stdout
-            mov rsi, rbx            ; cur_fmt_char = byte [rbx]
-            mov rdx, 1              ; len = 1
-            syscall                 ; outchar(cur_fmt_char)
+            je .proc_specifier
+                                    ; put 1 char from fmt into stdout bufer
+            mov rdi, rbx            ; string addr = rbx
+            mov rsi, 1              ; string len = 1
+            call nasm_puts          ; DESTR(rdi, rsi, rdx, r8, r9)
 
             inc rbx                 ; next fmt_char
-            jmp fmt_loop            ;
+            jmp .fmt_loop           ;
 
-process_specifier:
+.proc_specifier:
             inc rbx                 ; cur_fmt_char - specificator
 
                                     ; switch (cur_fmt_char)
             cmp byte [rbx], 'c'     ; if cur_char == 'c'
-            je print_char
+            je .print_char
 
             cmp byte [rbx], 's'
-            je print_c_string
+            je .print_c_string
 
-process_specifier_end:
+            ; cmp byte [rbx], 'x'
+            ; je print_hex
+
+.proc_specifier_end:
 
             inc rbx                 ; next fmt_char
-            jmp fmt_loop
+            jmp .fmt_loop
 
-print_char:
-            mov rax, 0x01           ; write
-            mov rdi, 1              ; stdout
-            mov rsi, rbp            ; string_addr = &cur_arg
-            mov rdx, 1              ; len = 1
-            syscall                 ; outchar(char)
-
-            add rbp, 8              ; next arg
-            jmp process_specifier_end
-
-print_c_string:
-
-            mov rax, 0x01           ; write
-            mov rdi, 1              ; stdout
-            mov rsi, qword [rbp]    ; |
-            call c_strlen           ; | rdx = strlen
-            mov rsi, qword [rbp]    ; string_addr = cur_arg
-            syscall
+.print_char:
+                                    ; put 1 char from arg into stdout bufer
+            mov rdi, rbp            ; string addr = rbx
+            mov rsi, 1              ; string len = 1
+            call nasm_puts          ; DESTR(rdi, rsi, rdx, r8, r9)
 
             add rbp, 8              ; next arg
-            jmp process_specifier_end
+            jmp .proc_specifier_end
 
+.print_c_string:
 
-fmt_loop_end:
+            mov rdi, qword [rbp]    ; rdi = cur_arg - string addr
+            call c_strlen           ; -> rax - string len
+
+            mov rdi, qword[rbp]
+            mov rsi, rax
+            call nasm_puts          ; DESTR(rdi, rsi, rdx, r8, r9)
+
+            add rbp, 8              ; next arg
+            jmp .proc_specifier_end
+
+.fmt_loop_end:
 
             ret
 
@@ -113,19 +217,29 @@ global _start                  ; predefined entry point name for ld
 _start:
 
             push rbp
-            mov rbp, rsp
 
-
-            push Msg
-            push '!'
-            push '&'
-
-            push fmt_string
+            ;push '5'            ; 5'th arg
+            mov rcx, '4'        ; 4'th arg
+            mov rdx, '3'        ; 3'rd arg
+            mov rsi, Msg        ; 2'nd arg
+            mov rdi, fmt_string ; 1'st arg
 
             call nasm_printf
 
-            mov rsp, rbp       ; remove all stack arguments
-            pop rbp            ; restore old stack frame
+            add rsp, 0          ; clear stack
+            pop rbp             ; restore old stack frame
+
+
+            ; mov rdi, Msg
+            ; call c_strlen
+            ; mov qword [stdout_bufer_idx], rax
+
+            ; mov rsi, Msg            ; в RSI - откуда копируем
+            ; mov rdi, stdout_bufer   ; в RDI - куда копируем
+            ; mov rcx, rax            ; в RCX - сколько копируем
+            ; rep movsb               ; выполняем копирование по отдельным словам
+
+            call stdout_flush
 
             mov rax, 0x3C      ; exit64 (rdi)
             xor rdi, rdi       ; exit_code = 0
@@ -133,8 +247,10 @@ _start:
 
 section     .data
 
-Msg:        db "Subtree", 0x00
-
+Msg:        db "Subtrefwfewe", 0x00
 MsgLen      equ $ - Msg
+fmt_string  db "%s %c %c", 0x0a, 0x00
+stdout_bufer_size equ 32
+stdout_bufer db stdout_bufer_size dup(0x00)
+stdout_bufer_idx dq 0
 
-fmt_string db "%c %c %s", 0x0a 0x00
