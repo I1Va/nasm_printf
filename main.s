@@ -227,12 +227,12 @@ nasm_putnum:
 .end:
             inc     rcx                                 ; move rcx to first written bit in bufer
 
-            lea rdi, [rsp - 80 + rcx]                   ;| cmp len of number in bufer
-            call c_strlen                               ;|
+            lea         rdi, [rsp - 80 + rcx]           ;| cmp len of number in bufer
+            call        c_strlen                        ;|
 
-            lea rdi, [rsp - 80 + rcx]                   ;|
-            mov rsi, rax                                ;| put number ascii string into stdout bufer
-            call nasm_puts                              ;|
+            lea         rdi, [rsp - 80 + rcx]           ;|
+            mov         rsi, rax                        ;| put number ascii string into stdout bufer
+            call        nasm_puts                       ;|
 
             ret
 ;================================================================================================
@@ -470,14 +470,14 @@ nasm_exit:
             call    qword[atexit_list + rbp]            ; call atexit_list[rbp--]
 .while_end:
 
-            mov rdi, rbx                                ; restore exit code
+            mov     rdi, rbx                            ; restore exit code
 
             pop     rbp                                 ;| restore nonvolatile regs
             pop     rbx                                 ;|
 
             pop     rax                                 ; pop return adrr
 
-            mov rax, 0x3C                               ; exit64 (rdi)
+            mov     rax, 0x3C                           ; exit64 (rdi)
                                                         ; exit_code = rdi
             syscall
 ;================================================================================================
@@ -491,21 +491,21 @@ _start:
             call    nasm_atexit
 
 
-            push -1341
-            push -1341
-            push -1341
-            mov rcx, -1341                              ; 4'th arg
-            mov rdx, '#'                                ; 3'rd arg
-            mov rsi, Msg                                ; 2'nd arg
-            mov rdi, fmt_string_1                       ; 1'st arg
+            push    -1341
+            push    -1341
+            push    -1341
+            mov     rcx, -1341                          ; 4'th arg
+            mov     rdx, '#'                            ; 3'rd arg
+            mov     rsi, Msg                            ; 2'nd arg
+            mov     rdi, fmt_string_1                   ; 1'st arg
 
-            call nasm_printf
+            call    nasm_printf
 
-            add rsp, 48                                 ; clear stack (args_number * 8)
+            add     rsp, 48                             ; clear stack (args_number * 8)
 
 
-            mov rdi, 0                                  ;|
-            call nasm_exit                              ;| exit(rdi)
+            mov     rdi, 0                              ;|
+            call    nasm_exit                           ;| exit(rdi)
 
 
 section     .data
