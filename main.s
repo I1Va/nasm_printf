@@ -1,9 +1,3 @@
-;:================================================
-;: 0-Linux-nasm-64.s                   (c)Ded,2012
-;:================================================
-
-; nasm -f elf64 -l 0-Linux-nasm-64.lst 0-Linux-nasm-64.s  ;  ld -s -o 0-Linux-nasm-64 0-Linux-nasm-64.o
-
 section .text
 
 ;:================================================
@@ -62,7 +56,6 @@ stdout_flush:
 
         ret
 ;:================================================
-
 
 
 
@@ -129,8 +122,19 @@ nasm_puts:
 
 .end:
             ret
-
 ;:================================================
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ;:================================================
@@ -150,9 +154,14 @@ nasm_printf:
 
             push r10
 
-            mov rbp, rsp
-            add rbp, 16
-            mov rbx, [rsp + 8]      ; fmt offset
+            push rbx                ;| saving nonvolatile registers
+            push rbp                ;|
+            push rdi                ;|
+            push rsi                ;|
+
+            mov rbp, rsp            ;| rbp - arg pointer
+            add rbp, 48             ;| nonvolatile_regs_cnt * 8 + 16
+            mov rbx, [rsp + 40]     ;  rbx - fmt pointer [rsp + nonvolatile_regs_cnt * 8 + 8]
 
 .fmt_loop:
             cmp byte [rbx], 0x00    ; if fmt[rbx] == 0 -> fmt_loop_end
@@ -161,12 +170,18 @@ nasm_printf:
             cmp byte [rbx], '%'
             je .proc_specifier
                                     ; put 1 char from fmt into stdout bufer
+
+            jmp .print_fmt_char
+
+.print_fmt_char:
             mov rdi, rbx            ; string addr = rbx
             mov rsi, 1              ; string len = 1
             call nasm_puts          ; DESTR(rdi, rsi, rdx, r8, r9)
 
             inc rbx                 ; next fmt_char
-            jmp .fmt_loop           ;
+            jmp .fmt_loop
+
+
 
 .proc_specifier:
             inc rbx                 ; cur_fmt_char - specificator
@@ -177,6 +192,11 @@ nasm_printf:
 
             cmp byte [rbx], 's'
             je .print_c_string
+
+            cmp byte[rbx], '%'
+            je .print_fmt_char
+
+
 
             ; cmp byte [rbx], 'x'
             ; je print_hex
@@ -209,6 +229,11 @@ nasm_printf:
 
 .fmt_loop_end:
 
+            pop rsi                 ;| restoring nonvolatile registers
+            pop rdi                 ;|
+            pop rbp                 ;|
+            pop rbx                 ;|
+
             ret
 
 global _start                  ; predefined entry point name for ld
@@ -226,18 +251,8 @@ _start:
 
             call nasm_printf
 
-            add rsp, 0          ; clear stack
+            add rsp, 32         ; clear stack (args_number * 8)
             pop rbp             ; restore old stack frame
-
-
-            ; mov rdi, Msg
-            ; call c_strlen
-            ; mov qword [stdout_bufer_idx], rax
-
-            ; mov rsi, Msg            ; в RSI - откуда копируем
-            ; mov rdi, stdout_bufer   ; в RDI - куда копируем
-            ; mov rcx, rax            ; в RCX - сколько копируем
-            ; rep movsb               ; выполняем копирование по отдельным словам
 
             call stdout_flush
 
@@ -249,7 +264,7 @@ section     .data
 
 Msg:        db "Subtrefwfewe", 0x00
 MsgLen      equ $ - Msg
-fmt_string  db "%s %c %c", 0x0a, 0x00
+fmt_string  db "%s %c %c %%", 0x0a, 0x00
 stdout_bufer_size equ 32
 stdout_bufer db stdout_bufer_size dup(0x00)
 stdout_bufer_idx dq 0
