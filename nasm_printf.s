@@ -1,5 +1,6 @@
+global nasm_printf
+global stdout_flush
 section .text
-
 ;================================================================================================
 ;                  c_strlen
 ;================================================================================================
@@ -48,11 +49,11 @@ c_strlen_while:
 stdout_flush:
         mov     rax, 0x01                               ; write
         mov     rdi, 1                                  ; stdout
-        mov     rsi, stdout_bufer                       ; string_addr
-        mov     rdx, qword [stdout_bufer_idx]           ; len
+        lea     rsi, [rel stdout_bufer]                 ; string_addr
+        mov     rdx, qword [rel stdout_bufer_idx]       ; len
         syscall
 
-        mov     qword [stdout_bufer_idx], 0x0           ; stdout_bufer_idx = 0
+        mov     qword [rel stdout_bufer_idx], 0x0       ; stdout_bufer_idx = 0
 
         ret
 ;================================================================================================
@@ -83,7 +84,7 @@ nasm_puts:
             cmp     rsi, stdout_bufer_size              ;| if string doesn't fit into stdout bufer
             jg      .not_fit                            ;| -> flush + print string
 
-            mov     rdx, qword [stdout_bufer_idx]       ;| if bufer + string overflows
+            mov     rdx, qword [rel stdout_bufer_idx]       ;| if bufer + string overflows
             add     rdx, rsi                            ;| -> flush + write string to bufer
             cmp     rdx, stdout_bufer_size              ;|
             jge     .stdout_overflow                    ;|
@@ -108,14 +109,14 @@ nasm_puts:
 
 .fit:
             mov     rcx, r9                             ; len
-            mov     rdi, stdout_bufer                   ;|dst
-            add     rdi, qword [stdout_bufer_idx]       ;|
+            lea     rdi, [rel stdout_bufer]             ;|dst
+            add     rdi, qword [rel stdout_bufer_idx]
             mov     rsi, r8                             ; src
             rep     movsb                               ; copy string to bufer
 
-            mov     rcx, qword[stdout_bufer_idx]        ;|
+            mov     rcx, qword[rel stdout_bufer_idx]        ;|
             add     rcx, r9                             ;| move bufer idx
-            mov     qword[stdout_bufer_idx], rcx        ;|
+            mov     qword[rel stdout_bufer_idx], rcx        ;|
 
             jmp     .end
 
@@ -155,7 +156,7 @@ nasm_putchar:
 
 
 ;================================================================================================
-;              nasm_putnum
+;
 ;================================================================================================
 ; DESCR:
 ;       converts a number (rdi) to a base(rsi) in two's complement form
@@ -263,6 +264,8 @@ nasm_putnum:
 nasm_printf:
             pop     r10                                 ; r10 = ret addr
 
+            push    r9
+            push    r8
             push    rcx                                 ; 4'th arg
             push    rdx                                 ; 3'rd arg
             push    rsi                                 ; 2'nd arg
@@ -394,119 +397,12 @@ nasm_printf:
 ;================================================================================================
 
 
-
-;================================================================================================
-;              nasm_atexit
-;================================================================================================
-; DESCR:
-;       Registers the function pointed to by rdi  to be called on normal program termination (via exit())
-;       The functions will be called in reverse order they were registered, i.e. the function registered last will be executed first.
-;       The same function may be registered more than once.
-;       The implementation is guaranteed to support the registration of <atexit_list_sz> functions
-;       Transmitted funtions should not take arguments and return values
-; ENTRY:
-;       rdi - function pointer
-; DESTROY:
-;       rax, rdi
-; GLOBAL:
-;       atexit_list_sz
-;       atexit_list
-;       atexit_list_idx
-; RETURN:
-;       ​0​ if the registration succeeds, 1 otherwise.
-;       rax - return value
-;================================================================================================
-nasm_atexit:
-            mov     rsi, qword [atexit_list_idx]        ; if atexit_list will be overflowed -> return 1
-            cmp     rsi, atexit_list_sz                 ; else -> add function pointer
-            jge     .exit_failure
-            jmp     .exit_succes
-
-.exit_failure:
-            mov     rax, 1
-            ret
-
-.exit_succes:
-            mov     qword [atexit_list + rsi], rdi      ;|
-            inc     rsi                                 ;| atexit_list_idx[atexit_list_idx++] = function_ptr
-            mov     qword [atexit_list_idx], rsi        ;|
-
-            xor     rax, rax
-            ret
-
-;================================================================================================
-
-
-
-;================================================================================================
-;              nasm_exit
-;================================================================================================
-; DESCR:
-;       calls functions from atexit_list in reversed order
-;       exits program with code in rdi
-; ENTRY:
-;       rdi - exit code
-; DESTROY:
-;       rdi, rsi, rdx
-; GLOBAL:
-;       atexit_list_sz
-;       atexit_list
-;       atexit_list_idx
-; RETURN:
-;       None
-;================================================================================================
-nasm_exit:
-            push    rbx                                 ;| save nonvolatile regs
-            push    rbp                                 ;|
-
-            mov     rbx, rdi                            ; save rdi into rbx
-            mov     rbp, qword [atexit_list_idx]        ; rbp = atexit_list_idx
-.while:
-
-            cmp     rbp, 0
-            je      .while_end
-
-            dec     rbp                                 ;
-            call    qword[atexit_list + rbp]            ; call atexit_list[rbp--]
-.while_end:
-
-            mov     rdi, rbx                            ; restore exit code
-
-            pop     rbp                                 ;| restore nonvolatile regs
-            pop     rbx                                 ;|
-
-            pop     rax                                 ; pop return adrr
-
-            mov     rax, 0x3C                           ; exit64 (rdi)
-                                                        ; exit_code = rdi
-            syscall
-;================================================================================================
-
-global _start                                           ; predefined entry point name for ld
-
-
-_start:
-
-            mov     rdi, stdout_flush
-            call    nasm_atexit
-
-
-            push    -1341
-            push    -1341
-            push    -1341
-            mov     rcx, -1341                          ; 4'th arg
-            mov     rdx, '#'                            ; 3'rd arg
-            mov     rsi, Msg                            ; 2'nd arg
-            mov     rdi, fmt_string_1                   ; 1'st arg
-
-            call    nasm_printf
-
-            add     rsp, 48                             ; clear stack (args_number * 8)
-
-
-            mov     rdi, 0                              ;|
-            call    nasm_exit                           ;| exit(rdi)
-
+; global c_strlen
+; global global
+; global stdout_flush
+; global nasm_puts
+; global nasm_putchar
+; global nasm_putnum
 
 section     .data
 
