@@ -393,27 +393,16 @@ nasm_printf:
             pop     rbp                 ;|
             pop     rbx                 ;|
 
+            pop     rdi                 ; save return address
+            add     rsp, 6 * 8          ; clear stack
+            push    rdi                 ; restore return address
             ret
 ;================================================================================================
 
-
-; global c_strlen
-; global global
-; global stdout_flush
-; global nasm_puts
-; global nasm_putchar
-; global nasm_putnum
-
 section     .data
-
-Msg:        db "Hello", 0x00
-fmt_string_1  db "string '%s'", 0x0a, "char '%c'", 0x0a, "hex '%x'", 0x0a, "octal '%o'", 0x0a, "decimal '%d'", 0x0a, "binary '%b'", 0x0a, "radar is 100 %% 0_0", 0x0a, 0x0
-fmt_string_2  db "123", 0x00
-
-stdout_bufer_size equ 1024
+stdout_bufer_size equ 128
 stdout_bufer db stdout_bufer_size dup(0x0)
 stdout_bufer_idx dq 0
-
 
 atexit_list_sz equ 16
 atexit_list dq atexit_list_sz dup(-1)
