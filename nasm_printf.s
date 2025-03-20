@@ -1,5 +1,43 @@
 global nasm_printf
 global stdout_flush
+
+section .rodata
+
+spec_jmp_table:
+    dq nasm_printf.no_such_specifier        ; %a
+
+    dq nasm_printf.print_bin                ; %b
+    dq nasm_printf.print_char               ; %c
+    dq nasm_printf.print_decimal            ; %d
+
+    dq nasm_printf.no_such_specifier        ; %e
+    dq nasm_printf.no_such_specifier        ; %f
+    dq nasm_printf.no_such_specifier        ; %g
+    dq nasm_printf.no_such_specifier        ; %h
+    dq nasm_printf.no_such_specifier        ; %i
+    dq nasm_printf.no_such_specifier        ; %j
+    dq nasm_printf.no_such_specifier        ; %k
+    dq nasm_printf.no_such_specifier        ; %l
+    dq nasm_printf.no_such_specifier        ; %m
+    dq nasm_printf.no_such_specifier        ; %n
+
+    dq nasm_printf.print_oct                ; %o
+
+    dq nasm_printf.no_such_specifier        ; %p
+    dq nasm_printf.no_such_specifier        ; %q
+    dq nasm_printf.no_such_specifier        ; %r
+
+    dq nasm_printf.print_c_string           ; %s
+
+    dq nasm_printf.no_such_specifier        ; %t
+    dq nasm_printf.no_such_specifier        ; %u
+    dq nasm_printf.no_such_specifier        ; %v
+    dq nasm_printf.no_such_specifier        ; %w
+
+    dq nasm_printf.print_hex                ; %x
+
+
+
 section .text
 ;================================================================================================
 ;                  c_strlen
@@ -49,11 +87,11 @@ c_strlen_while:
 stdout_flush:
         mov     rax, 0x01                               ; write
         mov     rdi, 1                                  ; stdout
-        lea     rsi, [rel stdout_bufer]                 ; string_addr
-        mov     rdx, qword [rel stdout_bufer_idx]       ; len
+        lea     rsi, [stdout_bufer]                 ; string_addr
+        mov     rdx, qword [stdout_bufer_idx]       ; len
         syscall
 
-        mov     qword [rel stdout_bufer_idx], 0x0       ; stdout_bufer_idx = 0
+        mov     qword [stdout_bufer_idx], 0x0       ; stdout_bufer_idx = 0
 
         ret
 ;================================================================================================
@@ -84,7 +122,7 @@ nasm_puts:
             cmp     rsi, stdout_bufer_size              ;| if string doesn't fit into stdout bufer
             jg      .not_fit                            ;| -> flush + print string
 
-            mov     rdx, qword [rel stdout_bufer_idx]       ;| if bufer + string overflows
+            mov     rdx, qword [stdout_bufer_idx]       ;| if bufer + string overflows
             add     rdx, rsi                            ;| -> flush + write string to bufer
             cmp     rdx, stdout_bufer_size              ;|
             jge     .stdout_overflow                    ;|
@@ -109,14 +147,14 @@ nasm_puts:
 
 .fit:
             mov     rcx, r9                             ; len
-            lea     rdi, [rel stdout_bufer]             ;|dst
-            add     rdi, qword [rel stdout_bufer_idx]
+            lea     rdi, [stdout_bufer]             ;|dst
+            add     rdi, qword [stdout_bufer_idx]
             mov     rsi, r8                             ; src
             rep     movsb                               ; copy string to bufer
 
-            mov     rcx, qword[rel stdout_bufer_idx]        ;|
+            mov     rcx, qword[stdout_bufer_idx]        ;|
             add     rcx, r9                             ;| move bufer idx
-            mov     qword[rel stdout_bufer_idx], rcx        ;|
+            mov     qword[stdout_bufer_idx], rcx        ;|
 
             jmp     .end
 
@@ -264,8 +302,8 @@ nasm_putnum:
 nasm_printf:
             pop     r10                                 ; r10 = ret addr
 
-            push    r9
-            push    r8
+            push    r9                                  ; 6'th arg
+            push    r8                                  ; 5'th arg
             push    rcx                                 ; 4'th arg
             push    rdx                                 ; 3'rd arg
             push    rsi                                 ; 2'nd arg
@@ -299,39 +337,33 @@ nasm_printf:
             jmp     .proc_specifier_end
 
 
-
 .proc_specifier:
             inc     rbx                                 ; cur_fmt_char - specificator
-
                                                         ; switch (cur_fmt_char)
-            cmp     byte [rbx], 'c'
-            je      .print_char
+            xor     r8, r8
+            mov     r8b, byte [rbx]
 
-            cmp     byte [rbx], 's'
-            je      .print_c_string
-
-            cmp     byte [rbx], 'x'
-            mov     rsi, 16
-            je      .print_xob_ntoa
-
-            cmp     byte [rbx], 'o'
-            mov     rsi, 8
-            je      .print_xob_ntoa
-
-            cmp     byte [rbx], 'b'
-            mov     rsi, 2
-            je      .print_xob_ntoa
-
-            cmp     byte [rbx], 'd'
-            je      .print_decimal
-
-            cmp     byte[rbx], '%'
+            cmp     r8b, '%'
             je      .print_fmt_char
+
+            cmp     r8b, 'x'
+            jg      .no_such_specifier
+            cmp     r8b, 'a'
+            jl      .no_such_specifier
+
+            sub     r8b, 'a'
+
+            shl     r8, 3
+            jmp     spec_jmp_table[r8]
+
 
 .proc_specifier_end:
 
             inc     rbx                                 ; next fmt_char
             jmp     .fmt_loop
+
+.no_such_specifier:
+            jmp     .proc_specifier_end
 
 .print_char:
                                                         ; put 1 char from arg into stdout bufer
@@ -343,7 +375,6 @@ nasm_printf:
             jmp     .proc_specifier_end
 
 .print_c_string:
-
             mov     rdi, qword [rbp]                    ; rdi = cur_arg - string addr
             call    c_strlen                            ; -> rax - string len
 
@@ -358,8 +389,8 @@ nasm_printf:
             mov     rdi, qword [rbp]                    ; number from args
             mov     rsi, 10
 
-            test    rdi, rdi                            ;|
-            jns     .decimal_positive                   ;| if rdi > 0 -> decimal is positive
+            cmp     rdi, 0
+            jge     .decimal_positive                   ;| if rdi > 0 -> decimal is positive
 
             mov     rdi, '-'                            ; putchar('-')
             call    nasm_putchar                        ; DESTR(rdi, rsi, rdx, r8, r9)
@@ -377,10 +408,24 @@ nasm_printf:
             add     rbp, 8
             jmp     .proc_specifier_end
 
+.print_hex:
+            mov     rsi, 16
+            mov     rdi, qword [rbp]
+            call    nasm_putnum
 
-.print_xob_ntoa:
-            mov     rdi, qword [rbp]                    ; number from args
-                                                        ; rsi - base
+            add     rbp, 8
+            jmp     .proc_specifier_end
+
+.print_oct:
+            mov     rsi, 8
+            mov     rdi, qword [rbp]
+            call    nasm_putnum
+
+            add     rbp, 8
+            jmp     .proc_specifier_end
+.print_bin:
+            mov     rsi, 2
+            mov     rdi, qword [rbp]
             call    nasm_putnum
 
             add     rbp, 8
@@ -400,7 +445,7 @@ nasm_printf:
 ;================================================================================================
 
 section     .data
-stdout_bufer_size equ 128
+stdout_bufer_size equ 10
 stdout_bufer db stdout_bufer_size dup(0x0)
 stdout_bufer_idx dq 0
 
