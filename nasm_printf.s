@@ -1,11 +1,10 @@
 global nasm_printf
 global stdout_flush
+extern atexit
 
 section .rodata
 
 spec_jmp_table:
-    dq nasm_printf.no_such_specifier        ; %a
-
     dq nasm_printf.print_bin                ; %b
     dq nasm_printf.print_char               ; %c
     dq nasm_printf.print_decimal            ; %d
@@ -87,11 +86,11 @@ c_strlen_while:
 stdout_flush:
         mov     rax, 0x01                               ; write
         mov     rdi, 1                                  ; stdout
-        lea     rsi, [stdout_bufer]                 ; string_addr
-        mov     rdx, qword [stdout_bufer_idx]       ; len
+        lea     rsi, [stdout_bufer]                     ; string_addr
+        mov     rdx, qword [stdout_bufer_idx]           ; len
         syscall
 
-        mov     qword [stdout_bufer_idx], 0x0       ; stdout_bufer_idx = 0
+        mov     qword [stdout_bufer_idx], 0x0           ; stdout_bufer_idx = 0
 
         ret
 ;================================================================================================
@@ -300,6 +299,7 @@ nasm_putnum:
 ;       None
 ;================================================================================================
 nasm_printf:
+
             pop     r10                                 ; r10 = ret addr
 
             push    r9                                  ; 6'th arg
@@ -315,6 +315,19 @@ nasm_printf:
             push    rbp                                 ;|
             push    rdi                                 ;|
             push    rsi                                 ;|
+
+
+
+            mov     r8b, byte [atexit_stdout_flush_reg_state]
+            cmp     r8b, 0
+            jne     .not_register_flush
+
+            lea     rdi, [stdout_flush]
+            call    atexit wrt ..plt
++
+            mov     byte [atexit_stdout_flush_reg_state], 1
+
+.not_register_flush:
 
             mov     rbp, rsp                            ;| rbp - arg pointer
             add     rbp, 48                             ;| nonvolatile_regs_cnt * 8 + 16
@@ -340,25 +353,21 @@ nasm_printf:
 .proc_specifier:
             inc     rbx                                 ; cur_fmt_char - specificator
                                                         ; switch (cur_fmt_char)
-            xor     r8, r8
-            mov     r8b, byte [rbx]
+
+            xor     r8, r8                              ;
+            mov     r8b, byte [rbx]                     ; r8 = ascii code of curent specifier
 
             cmp     r8b, '%'
             je      .print_fmt_char
 
-            cmp     r8b, 'x'
-            jg      .no_such_specifier
-            cmp     r8b, 'a'
-            jl      .no_such_specifier
+            cmp     r8b, 'x'                            ;| if r8 not in jump table
+            jg      .no_such_specifier                  ;|  -> .no_such_specifier
+            cmp     r8b, 'b'                            ;|
+            jl      .no_such_specifier                  ;|
 
-            sub     r8b, 'a'
-
-            shl     r8, 3
-            jmp     spec_jmp_table[r8]
-
+            jmp     spec_jmp_table[(r8 - 'b') * 8]
 
 .proc_specifier_end:
-
             inc     rbx                                 ; next fmt_char
             jmp     .fmt_loop
 
@@ -445,6 +454,8 @@ nasm_printf:
 ;================================================================================================
 
 section     .data
+msg db "Reg", 0x0a
+
 stdout_bufer_size equ 10
 stdout_bufer db stdout_bufer_size dup(0x0)
 stdout_bufer_idx dq 0
@@ -452,3 +463,5 @@ stdout_bufer_idx dq 0
 atexit_list_sz equ 16
 atexit_list dq atexit_list_sz dup(-1)
 atexit_list_idx dq 0
+
+atexit_stdout_flush_reg_state db 0
